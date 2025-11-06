@@ -105,11 +105,9 @@ import numpy as np
 from scipy.integrate import solve_ivp
 from scipy.optimize import least_squares
 
-def surrogate_rhs(t, y, p):
-    # p is a numeric array: [α, β, γ, δ, λ, μ, ν, ξ]
+def surrogate_ode(t, y, p):
     α, β, γ, δ, λ, μ, ν, ξ = p
     A, B, C, D = y
-
     dA = -α * A * B + β * C
     dB = -γ * B + δ * A
     dC = -λ * C + μ * A**2
@@ -117,63 +115,32 @@ def surrogate_rhs(t, y, p):
     return [dA, dB, dC, dD]
 
 
-from scipy.integrate import solve_ivp
-
-def solve_surrogate(t, y0, p):
-    """Solve the surrogate ODE system at the given time points."""
-    def f(t, y):
-        α, β, γ, δ, λ, μ, ν, ξ = p
-        A, B, C, D = y
-        dA = -α * A * B + β * C
-        dB = -γ * B + δ * A
-        dC = -λ * C + μ * A**2
-        dD = ν * B - ξ * D
-        return [dA, dB, dC, dD]
-
-    sol = solve_ivp(
-        f,
-        (t[0], t[-1]),
-        y0,
-        t_eval=t,                # ensure same time grid as PDE
-        method="RK45",
-        max_step=(t[1] - t[0])   # prevent large adaptive jumps
-    )
-    return sol.y
-
-
 def fit_parameters(t, A_pde, B_pde, C_pde, D_pde, y0=None):
-    """Fit surrogate ODE parameters to PDE observables using nonlinear least squares."""
+    """Fit surrogate ODE parameters to PDE observables."""
     y_pde = np.vstack([A_pde, B_pde, C_pde, D_pde])
 
     if y0 is None:
         y0 = y_pde[:, 0]
 
+    def simulate(p):
+        sol = solve_ivp(lambda t, y: surrogate_ode(t, y, p),
+                        (t[0], t[-1]), y0, t_eval=t, method='RK45', max_step=0.01)
+        return sol.y
+
     def residuals(p):
-        y_ode = solve_surrogate(t, y0, p)
+        y_ode = simulate(p)
+        return (y_ode - y_pde).ravel()
 
-        # Enforce equal length between ODE and PDE data
-        min_len = min(y_ode.shape[1], y_pde.shape[1])
-        y_ode = y_ode[:, :min_len]
-        y_pde_cut = y_pde[:, :min_len]
-
-        return (y_ode - y_pde_cut).ravel()
-
-    # Initial guess and bounds
+    # Initial guess
     p0 = np.random.uniform(0.01, 1.0, 8)
-    bounds = (0, 5)
+    result = least_squares(residuals, p0, bounds=(0, 5))
 
-    result = least_squares(residuals, p0, bounds=bounds, verbose=2)
-
-    print("\n=== Fitted parameters ===")
-    names = ['α', 'β', 'γ', 'δ', 'λ', 'μ', 'ν', 'ξ']
-    for name, val in zip(names, result.x):
-        print(f"{name} = {val:.4f}")
-
-    np.savez("fitted_params.npz", params=result.x)
-    print("\nSaved fitted parameters → fitted_params.npz")
+    print("Fitted parameters:")
+    param_names = ['α', 'β', 'γ', 'δ', 'λ', 'μ', 'ν', 'ξ']
+    for name, val in zip(param_names, result.x):
+        print(f"  {name} = {val:.4f}")
 
     return result.x
-
 
 
 # ---------------------------
