@@ -37,14 +37,14 @@ import os
 # Parametry surogatu (przykładowe)
 # ---------------------------
 params = {
-    'alpha_s': 1,   # odpowiada -alpha * A * B
-    'beta_s' : 0.1,   # wzmocnienie terminu C w dA/dt
-    'gamma_s': 0.3,   # tłumienie B
-    'delta_s': 0.2,   # wpływ A na B
-    'lambda_s': 0.4,  # tłumienie C
-    'mu_s': 0.05,     # nieliniowy wzrost C ~ A^2
-    'nu_s': 0.1,      # wpływ B na D
-    'xi_s': 0.02      # tłumienie D
+    'alpha_s': 1.3,   # odpowiada -alpha * A * B
+    'beta_s' : 0.35,   # wzmocnienie terminu C w dA/dt
+    'gamma_s': -0.1,   # tłumienie B
+    'delta_s': 0.035,   # wpływ A na B
+    'lambda_s': -0.03,  # tłumienie C
+    'mu_s': 0.25,     # nieliniowy wzrost C ~ A^2
+    'nu_s': 0.03,      # wpływ B na D
+    'xi_s': 0.05      # tłumienie D
 }
 
 # Zakres czasowy (przykładowy)
@@ -115,34 +115,6 @@ def surrogate_ode(t, y, p):
     return [dA, dB, dC, dD]
 
 
-def fit_parameters(t, A_pde, B_pde, C_pde, D_pde, y0=None):
-    """Fit surrogate ODE parameters to PDE observables."""
-    y_pde = np.vstack([A_pde, B_pde, C_pde, D_pde])
-
-    if y0 is None:
-        y0 = y_pde[:, 0]
-
-    def simulate(p):
-        sol = solve_ivp(lambda t, y: surrogate_ode(t, y, p),
-                        (t[0], t[-1]), y0, t_eval=t, method='RK45', max_step=0.01)
-        return sol.y
-
-    def residuals(p):
-        y_ode = simulate(p)
-        return (y_ode - y_pde).ravel()
-
-    # Initial guess
-    p0 = np.random.uniform(0.01, 1.0, 8)
-    result = least_squares(residuals, p0, bounds=(0, 5))
-
-    print("Fitted parameters:")
-    param_names = ['α', 'β', 'γ', 'δ', 'λ', 'μ', 'ν', 'ξ']
-    for name, val in zip(param_names, result.x):
-        print(f"  {name} = {val:.4f}")
-
-    return result.x
-
-
 # ---------------------------
 # Główna procedura
 # ---------------------------
@@ -150,7 +122,6 @@ def fit_parameters(t, A_pde, B_pde, C_pde, D_pde, y0=None):
 def main():
     global params
     data = np.load("pde_data.npz")
-    params = fit_parameters(data["t"], data["A_pde"], data["B_pde"], data["C_pde"], data["D_pde"])
 
     # Czy użytkownik podał plik z danymi PDE?
     pde_file = "pde_data.npz"
